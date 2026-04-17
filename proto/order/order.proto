@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package order;
+
+option go_package = "github.com/IK-akx/ap2-generated/order;orderpb";
+
+import "google/protobuf/timestamp.proto";
+
+service OrderTrackingService {
+  rpc SubscribeToOrderUpdates(OrderRequest) returns (stream OrderStatusUpdate);
+}
+
+message OrderRequest {
+  string order_id = 1;
+}
+
+message OrderStatusUpdate {
+  string order_id = 1;
+  string old_status = 2;
+  string new_status = 3;
+  string message = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
