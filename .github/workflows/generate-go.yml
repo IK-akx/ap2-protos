@@ -1,0 +1,82 @@
+name: Generate Go Protobuf Code
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "proto/**/*.proto"
+      - ".github/workflows/generate-go.yml"
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout proto repo
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
+      - name: Install Go plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+
+      - name: Prepare generated repo
+        run: |
+          git clone https://x-access-token:${{ secrets.GENERATED_REPO_TOKEN }}@github.com/IK-akx/ap2-generated.git generated
+          rm -rf generated/order generated/payment
+
+      - name: Generate code
+        run: |
+          mkdir -p generated/order generated/payment
+          protoc -I=. \
+            --go_out=paths=source_relative:generated \
+            --go-grpc_out=paths=source_relative:generated \
+            proto/order/order.proto
+
+          protoc -I=. \
+            --go_out=paths=source_relative:generated \
+            --go-grpc_out=paths=source_relative:generated \
+            proto/payment/payment.proto
+
+          mv generated/proto/order/* generated/order/
+          mv generated/proto/payment/* generated/payment/
+          rm -rf generated/proto
+
+      - name: Ensure go.mod exists
+        run: |
+          cat > generated/go.mod <<'EOF'
+          module github.com/IK-akx/ap2-generated
+
+          go 1.25.5
+
+          require (
+            google.golang.org/grpc v1.76.0
+            google.golang.org/protobuf v1.36.11
+          )
+          EOF
+
+      - name: Tidy generated module
+        working-directory: generated
+        run: |
+          go mod tidy
+
+      - name: Commit and push if changed
+        working-directory: generated
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Auto-generate protobuf code"
+          git push
